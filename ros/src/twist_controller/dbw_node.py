@@ -31,6 +31,9 @@ that we have created in the `__init__` function.
 
 '''
 
+FREQUENCY = 50.
+
+
 class VehicleParams(object):
     def __init__(self):
         self.vehicle_mass = None
@@ -62,54 +65,41 @@ class DBWNode(object):
         vehicle_params.steer_ratio = rospy.get_param('~steer_ratio', 14.8)
         vehicle_params.max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
         vehicle_params.max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
-        vehicle_params.min_speed = 0.1
+        vehicle_params.min_speed = 1.
 
-        self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
-                                         SteeringCmd, queue_size=1)
-        self.throttle_pub = rospy.Publisher('/vehicle/throttle_cmd',
-                                            ThrottleCmd, queue_size=1)
-        self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
-                                         BrakeCmd, queue_size=1)
+        self.steer_pub = rospy.Publisher('/vehicle/steering_cmd', SteeringCmd, queue_size=1)
+        self.throttle_pub = rospy.Publisher('/vehicle/throttle_cmd', ThrottleCmd, queue_size=1)
+        self.brake_pub = rospy.Publisher('/vehicle/brake_cmd', BrakeCmd, queue_size=1)
 
-        self.prev_timestamp = rospy.get_time()
+        self.prev_timestamp = rospy.Time().now()
         self.dbw_enabled = True
         self.current_velocity = None
         self.twist_cmd = None
         self.reset_request = True
 
-        # TODO: Create `Controller` object
         self.controller = Controller(vehicle_params)
 
-        # TODO: Subscribe to all the topics you need to
-        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_callback, queue_size=1)
-        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_callback, queue_size=5)
-        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_callback, queue_size=5)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb, queue_size=1)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb, queue_size=5)
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb, queue_size=5)
 
         self.loop()
 
-    def dbw_enabled_callback(self, dbw_enabled):
+    def dbw_enabled_cb(self, dbw_enabled):
         self.dbw_enabled = dbw_enabled
 
-    def current_velocity_callback(self, current_velocity):
+    def current_velocity_cb(self, current_velocity):
         self.current_velocity = current_velocity
 
-    def twist_cmd_callback(self, twist_cmd):
+    def twist_cmd_cb(self, twist_cmd):
         self.twist_cmd = twist_cmd
 
     def loop(self):
-        rate = rospy.Rate(50) # 50Hz
+        rate = rospy.Rate(FREQUENCY)
+
         while not rospy.is_shutdown():
-            # TODO: Get predicted throttle, brake, and steering using `twist_controller`
-            # You should only publish the control commands if dbw is enabled
-            # throttle, brake, steering = self.controller.control(<proposed linear velocity>,
-            #                                                     <proposed angular velocity>,
-            #                                                     <current linear velocity>,
-            #                                                     <dbw status>,
-            #                                                     <any other argument you need>)
-            # if <dbw is enabled>:
-            #   self.publish(throttle, brake, steer)
-            cur_timestamp = rospy.get_time()
-            delta_time = cur_timestamp - self.prev_timestamp - cur_timestamp
+            cur_timestamp = rospy.Time().now()
+            delta_time = cur_timestamp - self.prev_timestamp
             self.prev_timestamp = cur_timestamp
 
             if self.dbw_enabled and self.twist_cmd is not None and self.current_velocity is not None:
@@ -117,7 +107,7 @@ class DBWNode(object):
                     self.reset_request = False
                     self.controller.reset()
 
-                throttle, brake, steering = self.controller.control(twist_cmd=self.twist_cmd, velocity_current=self.current_velocity, del_time=delta_time)
+                throttle, brake, steering = self.controller.control(delta_time=delta_time.to_sec(), current_velocity=self.current_velocity, twist_cmd=self.twist_cmd)
 
                 self.publish(throttle, brake, steering)
 
